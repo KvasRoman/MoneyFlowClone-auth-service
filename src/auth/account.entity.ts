@@ -10,4 +10,7 @@ export class Account {
 
   @Column()
   password: string;
+
+  @Column({ nullable: true })  // Store hashed refresh token
+  refreshToken?: string;
 }

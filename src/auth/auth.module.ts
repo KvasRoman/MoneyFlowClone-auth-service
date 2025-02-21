@@ -12,7 +12,6 @@ import { Account } from './account.entity';
     PassportModule,
     JwtModule.register({
       secret: 'supersecret', // Use env variable in production
-      signOptions: { expiresIn: '1h' },
     }),
     TypeOrmModule.forFeature([Account])
   ],

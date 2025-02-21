@@ -11,16 +11,6 @@ export class AuthService {
     @InjectRepository(Account)
     private accountRepository: Repository<Account>) { }
 
-  // async validateUser(email: string, password: string): Promise<any> {
-  //   // Here, we’ll later fetch user data from `users-service` (mocked for now)
-  //   const mockUser = { id: 1, email: 'test@example.com', password: 'password' };
-
-  //   if (email === mockUser.email && password === mockUser.password) {
-  //     return { id: mockUser.id, email: mockUser.email };
-  //   }
-  //   throw new UnauthorizedException('Invalid credentials');
-  // }
-
   async createAccount(email: string, password: string) {
     // Check if account already exists
     const existingAccount = await this.accountRepository.findOne({ where: { email } });
@@ -31,10 +21,18 @@ export class AuthService {
     // Hash password before storing
     const hashedPassword = await this.hashPassword(password);
     const account = this.accountRepository.create({ email, password: hashedPassword });
+    await this.accountRepository.save(account);
+    const tokens = this.generateTokens(account.id, account.email);
 
-    return this.accountRepository.save(account);
+    return {
+      message: "User registered successfully",
+      ...tokens
+    }
   }
 
+  
+
+  //#region login
   async validateAccount(email: string, password: string) {
     const account = await this.accountRepository.findOne({ where: { email } });
     if (!account) {
@@ -46,36 +44,71 @@ export class AuthService {
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
-
-    return { message: 'Authentication successful' };
-  }
-  async login(user: any) {
-    const payload = { email: user.email, sub: user.id };
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
+    return this.generateTokens(account.id, account.email);
   }
   async hashPassword(password: string): Promise<string> {
     return await bcrypt.hash(password, 10);
   }
-
   async comparePasswords(password: string, hashed: string): Promise<boolean> {
     return await bcrypt.compare(password, hashed);
   }
+  //#endregion
+  //#region tokens
+  async refreshAccessToken(userId: number, refreshToken: string) {
+    const account = await this.accountRepository.findOne({ where: { id: userId } });
+    if (!account || !account.refreshToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
 
-  generateAccessToken(payload: any) {
-    return this.jwtService.sign(payload);
+    const isTokenValid = await bcrypt.compare(refreshToken, account.refreshToken);
+    if (!isTokenValid) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    return this.generateTokens(account.id, account.email);
   }
+  generateTokens(userId: number, email: string) {
+    const payload = { sub: userId, email };
 
-  generateRefreshToken(payload: any) {
-    return this.jwtService.sign(payload, { expiresIn: '7d' });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '1s' });  // Access Token (15 mins)
+    const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });   // Refresh Token (7 days)
+
+    this.storeRefreshToken(userId, refreshToken);
+    return {
+      accessToken,
+      refreshToken
+    };
   }
-
-  async validateToken(token: string) {
+  async storeRefreshToken(userId: number, refreshToken: string) {
+    const hashedToken = await bcrypt.hash(refreshToken, 10);
+    await this.accountRepository.update(userId, { refreshToken: hashedToken });
+  }
+  async validateToken(token: string, refreshToken: string) {
     try {
-      return this.jwtService.verify(token);
+      return this.jwtService.verify(token); // If valid, return decoded payload
     } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        // If access token is expired, refresh it
+        return this.handleTokenRefresh(refreshToken);
+      }
       throw new UnauthorizedException('Invalid token');
     }
   }
+  async handleTokenRefresh(refreshToken: string) {
+    try {
+      // Decode the refresh token manually
+      const decoded = this.jwtService.decode(refreshToken) as { sub: number; email: string };
+
+      if (!decoded || !decoded.sub) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      // Find the user and validate the refresh token
+      return this.refreshAccessToken(decoded.sub, refreshToken);
+    } catch (error) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  //#endregion
 }
