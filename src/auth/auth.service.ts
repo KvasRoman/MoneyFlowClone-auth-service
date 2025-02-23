@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -70,7 +70,7 @@ export class AuthService {
   generateTokens(userId: string, email: string) {
     const payload = { sub: userId, email };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '1s' });  // Access Token (15 mins)
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '3h' });  // Access Token (15 mins)
     const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });   // Refresh Token (7 days)
 
     this.storeRefreshToken(userId, refreshToken);
@@ -85,10 +85,14 @@ export class AuthService {
   }
   async validateToken(token: string, refreshToken: string) {
     try {
-      return this.jwtService.verify(token); // If valid, return decoded payload
+      const verify = this.jwtService.verify(token); // If valid, return decoded payload
+      return {
+        accountId: verify.sub
+      }
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
         // If access token is expired, refresh it
+        Logger.log("Expired token", "validate token")
         return this.handleTokenRefresh(refreshToken);
       }
       throw new UnauthorizedException('Invalid token');
