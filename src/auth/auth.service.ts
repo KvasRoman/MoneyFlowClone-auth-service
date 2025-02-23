@@ -54,7 +54,7 @@ export class AuthService {
   }
   //#endregion
   //#region tokens
-  async refreshAccessToken(userId: number, refreshToken: string) {
+  async refreshAccessToken(userId: string, refreshToken: string) {
     const account = await this.accountRepository.findOne({ where: { id: userId } });
     if (!account || !account.refreshToken) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -67,7 +67,7 @@ export class AuthService {
 
     return this.generateTokens(account.id, account.email);
   }
-  generateTokens(userId: number, email: string) {
+  generateTokens(userId: string, email: string) {
     const payload = { sub: userId, email };
 
     const accessToken = this.jwtService.sign(payload, { expiresIn: '1s' });  // Access Token (15 mins)
@@ -79,7 +79,7 @@ export class AuthService {
       refreshToken
     };
   }
-  async storeRefreshToken(userId: number, refreshToken: string) {
+  async storeRefreshToken(userId: string, refreshToken: string) {
     const hashedToken = await bcrypt.hash(refreshToken, 10);
     await this.accountRepository.update(userId, { refreshToken: hashedToken });
   }
@@ -97,7 +97,7 @@ export class AuthService {
   async handleTokenRefresh(refreshToken: string) {
     try {
       // Decode the refresh token manually
-      const decoded = this.jwtService.decode(refreshToken) as { sub: number; email: string };
+      const decoded = this.jwtService.decode(refreshToken) as { sub: string; email: string };
 
       if (!decoded || !decoded.sub) {
         throw new UnauthorizedException('Invalid refresh token');
