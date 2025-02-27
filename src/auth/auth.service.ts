@@ -26,7 +26,8 @@ export class AuthService {
 
     return {
       message: "User registered successfully",
-      ...tokens
+      ...tokens,
+      account: {id: account.id,email: account.email}
     }
   }
 
