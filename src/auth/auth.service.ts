@@ -30,8 +30,11 @@ export class AuthService {
       account: {id: account.id,email: account.email}
     }
   }
+  async getEmail(accountId: string) {
+    const existingAccount = await this.accountRepository.findOne({ where: { id: accountId } });
+    return existingAccount?.email;
+  }
 
-  
 
   //#region login
   async validateAccount(email: string, password: string) {
@@ -45,7 +48,10 @@ export class AuthService {
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    return this.generateTokens(account.id, account.email);
+    const tokens = this.generateTokens(account.id, account.email)
+    return {
+      account:{id: account.id, email: account.email},
+     ...tokens};
   }
   async hashPassword(password: string): Promise<string> {
     return await bcrypt.hash(password, 10);
@@ -88,13 +94,20 @@ export class AuthService {
     try {
       const verify = this.jwtService.verify(token); // If valid, return decoded payload
       return {
-        accountId: verify.sub
+        account: {
+          id: verify.sub, 
+          email: verify.email
+        }
       }
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
         // If access token is expired, refresh it
-        Logger.log("Expired token", "validate token")
-        return this.handleTokenRefresh(refreshToken);
+        
+        const {sub, email} = this.jwtService.decode(refreshToken) as { sub: string; email: string };
+        return {
+          ...await this.handleTokenRefresh(refreshToken),
+          account: {id: sub, email: email}          
+        };
       }
       throw new UnauthorizedException('Invalid token');
     }
